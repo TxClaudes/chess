@@ -48,7 +48,11 @@
     orientation: "white",
     preview: null,       // {fen, uci} when showing the engine's best move instead of the game move
     retry: null,         // {moveIndex, fen, status, message}
+    explore: null,       // free play: {base, line: [node], index, busy, auto, error}
+    dragFrom: null,      // square of the piece being dragged (for legal-move dots)
   };
+  const legalCache = new Map(); // fen -> legal moves (uci), fetched from the server
+  const AUTO_PLAY_MOVES = 10;
   let board = null;
   let chart = null;
 
@@ -353,20 +357,32 @@
     state.ply = Math.max(0, Math.min(max, ply));
     state.preview = null;
     state.retry = null;
+    stopExplore();
     render();
+  }
+
+  // The position shown on the board right now.
+  function currentFen() {
+    if (state.explore) {
+      // Show a move straight away while the engine is still analysing it.
+      const ex = state.explore;
+      return ex.pending ? fenAfterUci(exploreNode().fen, { uci: ex.pending }) : exploreNode().fen;
+    }
+    if (state.retry) return state.retry.fen;
+    if (state.preview) return state.preview.fen;
+    return state.data.positions[state.ply].fen;
   }
 
   function render() {
     const data = state.data;
     const pos = data.positions[state.ply];
-    let fen = pos.fen;
-    if (state.retry) fen = state.retry.fen;
-    else if (state.preview) fen = state.preview.fen;
-    board.position(fen, false);
+    board.position(currentFen(), false);
     sizeEvalBar();
+    ensureLegal(currentFen());
 
     // When previewing the best move or retrying, show the eval of the position before the game move.
-    const evalPos = state.preview || state.retry ? data.positions[state.ply - 1] : pos;
+    let evalPos = state.preview || state.retry ? data.positions[state.ply - 1] : pos;
+    if (state.explore) evalPos = exploreNode().pos;
     updateEvalBar(evalPos);
 
     document.querySelectorAll("#move-list .mv").forEach((el) => {
@@ -414,6 +430,7 @@
     const card = $id("move-card");
     const data = state.data;
     if (state.retry) { renderRetryCard(card); return; }
+    if (state.explore) { renderExploreCard(card); return; }
     if (state.ply === 0) {
       card.innerHTML = `<div class="move-head">Starting position<span class="eval">${formatEval(data.positions[0].eval, data.positions[0].fen)}</span></div>
         <div class="best-line">Use ← → or click a move.</div>`;
@@ -525,13 +542,25 @@
     const ox = inner.left - wrap.left, oy = inner.top - wrap.top;
     svg.setAttribute("viewBox", `${-ox} ${-oy} ${wrap.width} ${wrap.height}`);
     let out = "";
+    const dots = legalDots(size);
 
     if (state.retry) {
       if (state.retry.tried) out += highlight(state.retry.tried, classColor(state.retry.cls || "good"), size);
-      svg.innerHTML = out;
+      svg.innerHTML = out + dots;
       return;
     }
-    if (state.ply === 0) { svg.innerHTML = ""; return; }
+    if (state.explore) {
+      const node = exploreNode();
+      if (node.uci) {
+        out += highlight(node.uci, classColor(node.cls || "good"), size);
+        if (node.cls) out += squareBadge(node.uci.slice(2, 4), node.cls, size);
+      }
+      const next = node.pos && node.pos.lines[0];
+      if (next && !node.result) out += arrow(next.uci, size);
+      svg.innerHTML = out + dots;
+      return;
+    }
+    if (state.ply === 0) { svg.innerHTML = dots; return; }
 
     const m = state.data.moves[state.ply - 1];
     if (state.preview) {
@@ -544,7 +573,25 @@
       out += arrow(m.best_move.uci, size);
     }
     out += squareBadge(m.uci.slice(2, 4), m.classification, size);
-    svg.innerHTML = out;
+    svg.innerHTML = out + dots;
+  }
+
+  // Small dots on the squares the dragged piece can move to (captures get a ring).
+  function legalDots(size) {
+    if (!state.dragFrom) return "";
+    const fen = currentFen();
+    const legal = legalCache.get(fen) || [];
+    const occupied = placementToObj(fen.split(" ")[0]);
+    let out = "";
+    for (const uci of legal) {
+      if (uci.slice(0, 2) !== state.dragFrom) continue;
+      const to = uci.slice(2, 4);
+      const { x, y, s } = squareRect(to, size);
+      out += occupied[to]
+        ? `<circle cx="${x + s / 2}" cy="${y + s / 2}" r="${s * 0.44}" fill="none" stroke="rgba(0,0,0,.28)" stroke-width="${s * 0.08}"/>`
+        : `<circle cx="${x + s / 2}" cy="${y + s / 2}" r="${s * 0.16}" fill="rgba(0,0,0,.28)"/>`;
+    }
+    return out;
   }
 
   function highlight(uci, color, size) {
@@ -585,6 +632,153 @@
     return `<circle cx="${cx}" cy="${cy}" r="${r}" fill="${classColor(cls)}" stroke="rgba(0,0,0,.35)" stroke-width="1"/>${content}`;
   }
 
+  // ---------------------------------------------------------------- explore (free play)
+
+  function ensureLegal(fen) {
+    if (legalCache.has(fen)) return;
+    legalCache.set(fen, null); // pending
+    postJson("/api/explore", { fen, analyse: false })
+      .then(({ ok, body }) => { if (ok && body.legal_moves) legalCache.set(fen, body.legal_moves); else legalCache.delete(fen); })
+      .catch(() => legalCache.delete(fen));
+  }
+
+  function postJson(url, payload) {
+    return fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    }).then((res) => res.json().then((body) => ({ ok: res.ok, body })));
+  }
+
+  // The node for the position on the board: index -1 is where exploring started.
+  function exploreNode() {
+    const ex = state.explore;
+    return ex.index < 0 ? ex.base : ex.line[ex.index];
+  }
+
+  function stopExplore() {
+    if (state.explore) state.explore.auto = false;
+    state.explore = null;
+  }
+
+  function startExplore() {
+    const pos = state.data.positions[state.ply];
+    state.preview = null;
+    state.explore = {
+      base: { fen: pos.fen, pos, uci: null, san: null, cls: null, result: null },
+      line: [], index: -1, busy: false, auto: false, error: null,
+    };
+  }
+
+  // Play `uci` from the current explore position and analyse the result.
+  async function exploreMove(uci) {
+    if (!state.explore) startExplore();
+    const ex = state.explore;
+    const from = exploreNode();
+    ex.line = ex.line.slice(0, ex.index + 1); // playing a new move replaces the rest of the line
+    ex.busy = true;
+    ex.pending = uci;
+    ex.error = null;
+    render();
+    try {
+      const { ok, body } = await postJson("/api/explore", {
+        fen: from.fen, uci, depth: state.data.settings.depth,
+        before: { eval: from.pos.eval, lines: from.pos.lines },
+      });
+      if (state.explore !== ex) return false; // left explore mode meanwhile
+      if (!ok) throw new Error(body.error || "Server error");
+      if (!body.legal) return false;
+      legalCache.set(body.fen, body.legal_moves);
+      ex.line.push({
+        fen: body.fen, pos: body.position, uci: body.uci, san: body.san,
+        fenBefore: from.fen, result: body.result,
+        cls: body.classification ? body.classification.classification : null,
+      });
+      ex.index = ex.line.length - 1;
+      return true;
+    } catch (err) {
+      if (state.explore === ex) ex.error = err.message;
+      return false;
+    } finally {
+      if (state.explore === ex) { ex.busy = false; ex.pending = null; render(); }
+    }
+  }
+
+  function engineReply() {
+    const node = exploreNode();
+    const best = node.pos && node.pos.lines[0];
+    if (!best || node.result) return Promise.resolve(false);
+    return exploreMove(best.uci);
+  }
+
+  async function toggleAutoPlay() {
+    const ex = state.explore;
+    if (ex.auto) { ex.auto = false; render(); return; }
+    ex.auto = true;
+    render();
+    for (let i = 0; i < AUTO_PLAY_MOVES && ex.auto && state.explore === ex; i++) {
+      if (!(await engineReply())) break;
+    }
+    ex.auto = false;
+    if (state.explore === ex) render();
+  }
+
+  function exploreStep(delta) {
+    const ex = state.explore;
+    if (ex.busy) return;
+    ex.index = Math.max(-1, Math.min(ex.line.length - 1, ex.index + delta));
+    render();
+  }
+
+  function exploreMoveLabel(node) {
+    const [, turn, , , , fullmove] = node.fenBefore.split(" ");
+    return `${fullmove}${turn === "w" ? "." : "..."} ${node.san}`;
+  }
+
+  function renderExploreCard(card) {
+    const ex = state.explore;
+    const node = exploreNode();
+    const startLabel = state.ply === 0 ? "the starting position" : moveLabel(state.data.moves[state.ply - 1]);
+
+    let lineHtml = "";
+    ex.line.forEach((n, i) => {
+      const [, turn, , , , fullmove] = n.fenBefore.split(" ");
+      const num = turn === "w" ? `${fullmove}. ` : (i === 0 ? `${fullmove}... ` : "");
+      lineHtml += `<button class="ex-mv${i === ex.index ? " current" : ""}" data-idx="${i}">${num}${n.cls ? badge(n.cls) : ""}${escapeHtml(n.san)}</button>`;
+    });
+
+    let head = `Exploring from ${escapeHtml(startLabel)}`;
+    if (node.uci && node.cls) head = `${badge(node.cls, "lg")}<span>${escapeHtml(node.san)} ${MOVE_PHRASES[node.cls]}</span>`;
+    else if (node.uci) head = `<span>${escapeHtml(exploreMoveLabel(node))}</span>`;
+    const evalText = node.pos ? formatEval(node.pos.eval, node.fen) : "";
+
+    let body = "";
+    if (ex.busy) body += `<div class="retry-msg">Engine thinking…</div>`;
+    if (ex.error) body += `<div class="retry-msg bad">${escapeHtml(ex.error)}</div>`;
+    if (node.result) body += `<div class="retry-msg"><b>${escapeHtml(node.result)}</b></div>`;
+    if (!ex.busy && node.pos && !node.result) {
+      body += `<div class="best-line">` + node.pos.lines.map((l) =>
+        `<div><b>${formatEval(l.eval, node.fen)}</b> <span class="pv">${escapeHtml(l.pv_san.slice(0, 8).join(" "))}</span></div>`).join("") + `</div>`;
+    }
+
+    card.innerHTML = `<div class="move-head">${head}<span class="eval">${evalText}</span></div>
+      ${ex.line.length ? `<div class="ex-line">${lineHtml}</div>` : `<div class="best-line">Drag pieces for either side to try a line.</div>`}
+      ${body}
+      <div class="move-actions">
+        <button class="btn" id="ex-reply" ${ex.busy || ex.auto || node.result || !node.pos ? "disabled" : ""}>Engine reply</button>
+        <button class="btn" id="ex-auto" ${(ex.busy && !ex.auto) || node.result ? "disabled" : ""}>${ex.auto ? "Stop" : `Auto-play ${AUTO_PLAY_MOVES}`}</button>
+        <button class="btn" id="ex-exit">Back to game</button>
+      </div>`;
+    $id("ex-reply").onclick = () => engineReply();
+    $id("ex-auto").onclick = toggleAutoPlay;
+    $id("ex-exit").onclick = () => goTo(state.ply);
+    card.querySelectorAll(".ex-mv").forEach((el) => el.addEventListener("click", () => {
+      if (ex.busy) return;
+      ex.index = Number(el.dataset.idx);
+      render();
+    }));
+  }
+
   // ---------------------------------------------------------------- retry mode
 
   function startRetry() {
@@ -622,27 +816,45 @@
   }
 
   function onDragStart(source, piece) {
+    const fen = currentFen();
+    if (piece[0] !== fen.split(" ")[1]) return false; // not this side's turn
     const r = state.retry;
-    if (!r || r.status === "busy" || r.status === "correct" || r.status === "solution") return false;
-    const m = state.data.moves[r.moveIndex];
-    return piece[0] === m.color[0];
+    if (r) {
+      if (r.status === "busy" || r.status === "correct" || r.status === "solution") return false;
+    } else if (state.explore) {
+      if (state.explore.busy || state.explore.auto || exploreNode().result) return false;
+    } else if (state.preview) {
+      return false;
+    }
+    const legal = legalCache.get(fen);
+    if (legal && !legal.some((u) => u.startsWith(source))) return false; // piece has no moves
+    state.dragFrom = source;
+    drawOverlay();
+    return true;
   }
 
   function onDrop(source, target) {
+    state.dragFrom = null;
+    drawOverlay();
+    if (target === "offboard" || source === target) return "snapback";
+    const legal = legalCache.get(currentFen());
+    // Pawn moves to the last rank are promoted to a queen.
+    const uci = legal ? legal.find((u) => u === source + target || u === source + target + "q") : source + target;
+    if (!uci) return "snapback";
+    if (state.retry) { retryMove(uci); return undefined; }
+    exploreMove(uci); // starts exploring if not already
+    return undefined;
+  }
+
+  function retryMove(uci) {
     const r = state.retry;
-    if (!r || target === "offboard" || source === target) return "snapback";
     const m = state.data.moves[r.moveIndex];
     r.status = "busy";
     renderMoveCard();
-    fetch("/api/evaluate-move", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        fen: m.fen_before, uci: source + target, eval_before: m.eval_before,
-        best_uci: m.best_move && m.best_move.uci, depth: state.data.settings.depth,
-      }),
+    postJson("/api/evaluate-move", {
+      fen: m.fen_before, uci, eval_before: m.eval_before,
+      best_uci: m.best_move && m.best_move.uci, depth: state.data.settings.depth,
     })
-      .then((res) => res.json().then((body) => ({ ok: res.ok, body })))
       .then(({ ok, body }) => {
         if (state.retry !== r) return; // user navigated away
         if (!ok) { r.status = "error"; r.message = body.error || "Server error"; r.fen = m.fen_before; render(); return; }
@@ -688,6 +900,12 @@
     $id("download-json").addEventListener("click", downloadJson);
     $id("flip").addEventListener("click", flip);
     document.querySelectorAll("[data-nav]").forEach((btn) => btn.addEventListener("click", () => {
+      if (state.explore) {
+        const ex = state.explore;
+        const target = { start: -1, prev: ex.index - 1, next: ex.index + 1, end: ex.line.length - 1 }[btn.dataset.nav];
+        exploreStep(target - ex.index);
+        return;
+      }
       const n = state.data.moves.length;
       const target = { start: 0, prev: state.ply - 1, next: state.ply + 1, end: n }[btn.dataset.nav];
       goTo(target);
@@ -698,6 +916,16 @@
     });
     document.addEventListener("keydown", (e) => {
       if ($id("review-view").hidden || e.target.matches("textarea, input, select")) return;
+      if (state.explore) {
+        const ex = state.explore;
+        if (e.key === "ArrowLeft") { exploreStep(-1); e.preventDefault(); }
+        else if (e.key === "ArrowRight") { exploreStep(1); e.preventDefault(); }
+        else if (e.key === "Home") exploreStep(-1 - ex.index);
+        else if (e.key === "End") exploreStep(ex.line.length - 1 - ex.index);
+        else if (e.key === "Escape") goTo(state.ply);
+        else if (e.key === "f" || e.key === "F") flip();
+        return;
+      }
       if (e.key === "ArrowLeft") { goTo(state.ply - 1); e.preventDefault(); }
       else if (e.key === "ArrowRight") { goTo(state.ply + 1); e.preventDefault(); }
       else if (e.key === "Home") goTo(0);

@@ -14,7 +14,8 @@ from flask import Flask, jsonify, request, send_from_directory
 
 from config import Config
 from review.analyze import analyze_pgn
-from review.classify import BEST, EXCELLENT, point_loss_class
+from review.analyze import _position_dict
+from review.classify import BEST, EXCELLENT, MoveContext, classify_move, point_loss_class
 from review.engine import Analyzer, StockfishNotFound, find_stockfish
 from review.openings import load_book
 from review.pgn import PGNError
@@ -120,6 +121,87 @@ def job_status(job_id: str):
     return jsonify(body)
 
 
+def _legal_move(board: chess.Board, move: chess.Move) -> chess.Move | None:
+    """The move if legal (pawn moves to the last rank are auto-queened), else None."""
+    if move not in board.legal_moves:
+        piece = board.piece_at(move.from_square)
+        if piece and piece.piece_type == chess.PAWN and chess.square_rank(move.to_square) in (0, 7):
+            move = chess.Move(move.from_square, move.to_square, promotion=chess.QUEEN)
+    return move if move in board.legal_moves else None
+
+
+def _game_result(board: chess.Board) -> str | None:
+    if board.is_checkmate():
+        return "Checkmate"
+    if board.is_stalemate():
+        return "Stalemate"
+    if board.is_insufficient_material():
+        return "Draw by insufficient material"
+    if board.can_claim_draw():
+        return "Draw by repetition or 50-move rule"
+    return None
+
+
+@app.post("/api/explore")
+def explore():
+    """Free play: optionally make a move, then return the new position's legal moves and,
+    unless `analyse` is false, the engine's evaluation and a label for the move.
+
+    Request: {fen, uci?, before?: {eval, lines}, depth?, analyse?}. `before` is the
+    analysis of `fen` (from the game or a previous call), used to label the move.
+    """
+    data = request.get_json(silent=True) or {}
+    try:
+        board = chess.Board(data["fen"])
+        uci = data.get("uci")
+        move = chess.Move.from_uci(uci) if uci else None
+        depth = max(MIN_DEPTH, min(RETRY_MAX_DEPTH, int(data.get("depth") or RETRY_MAX_DEPTH)))
+    except (KeyError, ValueError, TypeError):
+        return _error("Bad request.", 400)
+
+    before_board = board.copy()
+    san = None
+    if move is not None:
+        move = _legal_move(board, move)
+        if move is None:
+            return jsonify({"legal": False})
+        san = board.san(move)
+        board.push(move)
+
+    body = {
+        "legal": True,
+        "fen": board.fen(),
+        "san": san,
+        "uci": move.uci() if move else None,
+        "legal_moves": [m.uci() for m in board.legal_moves],
+        "result": _game_result(board),
+    }
+    if not data.get("analyse", True):
+        return jsonify(body)
+
+    config = Config()
+    config.engine.workers = 1
+    try:
+        with Analyzer(config.engine) as analyzer:
+            position = _position_dict(analyzer.analyse(board.fen(), depth=depth))
+    except StockfishNotFound as exc:
+        return _error(str(exc), 503)
+    position["white_win"] = round(
+        white_win_pct(position["eval"], board.turn == chess.WHITE, config.classify.win_k), 2)
+    body["position"] = position
+
+    before = data.get("before")
+    if move is not None and isinstance(before, dict) and "eval" in before:
+        ctx = MoveContext(before_board, move, {"fen": before_board.fen(), "eval": before["eval"],
+                                               "lines": before.get("lines") or []},
+                          position, None, None)
+        try:
+            body["classification"] = classify_move(ctx, config.classify, in_book=False)
+        except (KeyError, TypeError, ValueError):
+            pass  # malformed `before`: return the position without a label
+    return jsonify(body)
+
+
 @app.post("/api/evaluate-move")
 def evaluate_move():
     """Grade a move tried in Retry mode against the original analysis of the position."""
@@ -133,12 +215,8 @@ def evaluate_move():
     except (KeyError, ValueError, TypeError):
         return _error("Bad request.", 400)
 
-    # Auto-queen pawn moves to the last rank.
-    if move not in board.legal_moves:
-        piece = board.piece_at(move.from_square)
-        if piece and piece.piece_type == chess.PAWN and chess.square_rank(move.to_square) in (0, 7):
-            move = chess.Move(move.from_square, move.to_square, promotion=chess.QUEEN)
-    if move not in board.legal_moves:
+    move = _legal_move(board, move)
+    if move is None:
         return jsonify({"legal": False})
 
     san = board.san(move)

@@ -58,6 +58,12 @@ A typical 40-move game takes 30 to 60 seconds at depth 18 with the default setti
 - Click a move, or a point on the graph, to jump there.
 - For any move that isn't the engine's choice, the card shows the best move and its line,
   and a green arrow on the board. **Show best move** plays it on the board.
+- **Explore lines:** in any position, drag a piece for either side to try your own moves.
+  Dots show where the picked-up piece can go. Each move gets the eval bar, the engine's top
+  two lines, a best-move arrow and a label (Best, Mistake, ...). **Engine reply** plays
+  Stockfish's answer, **Auto-play 10** lets it continue the line by itself. ← → step through
+  your line, **Esc** or **Back to game** returns. Playing a different move part-way through
+  replaces the rest of the line.
 - **Retry** (on inaccuracies, mistakes, misses and blunders): drag a piece to try a better
   move. A move counts as correct if it is Best or Excellent.
 - **Download JSON** saves the full analysis.

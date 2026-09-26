@@ -140,6 +140,15 @@ select { background: var(--bg); border: 1px solid var(--line); border-radius: 6p
 .best-line .pv { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 12px; color: var(--muted); }
 .move-actions { display: flex; gap: 8px; flex-wrap: wrap; }
 .move-actions .btn { padding: 6px 12px; font-size: 13px; }
+.ex-line { display: flex; flex-wrap: wrap; gap: 2px 4px; }
+.ex-mv {
+  display: inline-flex; align-items: center; gap: 4px; padding: 2px 6px; border: 0; border-radius: 4px;
+  background: none; cursor: pointer; font-weight: 600; font-size: 14px;
+}
+.ex-mv:hover { background: var(--panel-2); }
+.ex-mv.current { background: #4b4847; }
+.ex-mv .badge { width: 16px; height: 16px; font-size: 9px; }
+.ex-mv .badge svg { width: 10px; height: 10px; }
 .retry-msg { font-size: 14px; }
 .retry-msg.ok { color: var(--c-best); }
 .retry-msg.bad { color: var(--c-miss); }

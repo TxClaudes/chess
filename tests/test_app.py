@@ -70,3 +70,39 @@ def test_evaluate_move(client):
     assert good.get_json()["correct"] is True
     illegal = client.post("/api/evaluate-move", json={"fen": fen, "uci": "e1e3", "eval_before": {"type": "cp", "value": 30}})
     assert illegal.get_json() == {"legal": False}
+
+
+START = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
+
+
+def test_explore_legal_moves_without_engine(client):
+    body = client.post("/api/explore", json={"fen": START, "analyse": False}).get_json()
+    assert len(body["legal_moves"]) == 20
+    assert "position" not in body
+
+
+def test_explore_rejects_illegal_move(client):
+    assert client.post("/api/explore", json={"fen": START, "uci": "e2e5"}).get_json() == {"legal": False}
+
+
+def test_explore_auto_queens(client):
+    fen = "7k/4P3/8/8/8/8/8/K7 w - - 0 1"
+    body = client.post("/api/explore", json={"fen": fen, "uci": "e7e8", "analyse": False}).get_json()
+    assert body["uci"] == "e7e8q" and body["san"].startswith("e8=Q")
+
+
+def test_explore_reports_checkmate(client):
+    fen = "rnbqkbnr/pppp1ppp/8/4p3/6P1/5P2/PPPPP2P/RNBQKBNR b KQkq - 0 2"
+    body = client.post("/api/explore", json={"fen": fen, "uci": "d8h4", "analyse": False}).get_json()
+    assert body["result"] == "Checkmate" and body["legal_moves"] == []
+
+
+@needs_stockfish
+def test_explore_analyses_and_labels_the_move(client):
+    first = client.post("/api/explore", json={"fen": START, "depth": 8}).get_json()
+    assert first["position"]["lines"]
+    body = client.post("/api/explore", json={
+        "fen": START, "uci": "g2g4", "depth": 8, "before": first["position"]}).get_json()
+    assert body["san"] == "g4"
+    assert body["classification"]["classification"] in ("inaccuracy", "mistake", "blunder")
+    assert body["position"]["eval"]["type"] == "cp"

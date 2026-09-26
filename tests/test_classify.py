@@ -196,3 +196,12 @@ def test_only_move_keeping_a_forced_mate_is_great():
     # If the alternative also mates, nothing special.
     res = run(START, "g1f3", [line("g1f3", mate(5)), line("b1c3", mate(6))], mate(4))
     assert res["classification"] == C.BEST
+
+
+def test_only_move_winning_the_queen_is_great_even_when_already_winning():
+    # 24.Ne7+ from DerTeXx vs nadael-pez with Stockfish 19's numbers: the fork wins the
+    # queen (+12.92) while the best alternative Qh3 is +8.75. Only 3% apart in win%,
+    # but more than 3 pawns apart.
+    fen = "r4rk1/p5pp/1p1P1pq1/2p1RN2/8/2Q5/PPPR2P1/2K5 w - - 0 24"
+    res = run(fen, "f5e7", [line("f5e7", cp(1292)), line("c3h3", cp(875))], cp(1618))
+    assert res["classification"] == C.GREAT

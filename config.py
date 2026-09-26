@@ -51,6 +51,7 @@ class ClassificationConfig:
     special_min_win_after: float = 45.0    # mover must not be worse than roughly equal afterwards
     already_winning: float = 97.0          # second-best already this good -> nothing special
     great_gap: float = 10.0                # every alternative must be at least this much worse
+    great_cp_gap: int = 300                # ...or at least this many centipawns worse (winning a piece)
 
     # Brilliant: minimum material (pawn units) given up over the engine line.
     brilliant_min_sacrifice: int = 2       # 2 excludes plain pawn sacrifices

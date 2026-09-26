@@ -79,7 +79,7 @@ expected-points table:
 | Book | still in the opening book (lichess `chess-openings`, from move 1 without leaving it) |
 | Forced | the only legal move |
 | Miss | an Inaccuracy/Mistake/Blunder right after the opponent's mistake (≥ 10%) that hands back the advantage, ending roughly where things stood before that mistake. Ending up worse than that stays a Mistake/Blunder. |
-| Great | best or near-best (loses ≤ 2%), and every other move is at least 10% worse (or it is the only move that keeps a forced mate). Not for recaptures, easy captures (an undefended piece, or a piece worth more than the capturer), moving a piece away from a cheaper attacker, moves out of check, or when the second-best move is already ≥ 97% winning. |
+| Great | best or near-best (loses ≤ 2%), and every other move is at least 10% worse, or at least 3 pawns worse (for example the only move that wins a piece), or it is the only move that keeps a forced mate. Not for recaptures, easy captures (an undefended piece, or a piece worth more than the capturer), moving a piece away from a cheaper attacker, moves out of check, or when the second-best move is already ≥ 97% winning. |
 | Brilliant | best or near-best, gives up material (a piece left en prise, or ≥ 2 pawns down once the engine's line settles), the mover is not worse afterwards, and the position was not already won anyway (second-best < 97%). Pawn-only sacrifices don't count. |
 
 Mates have their own rules. For example, allowing a mate in 1 or 2 is a blunder, unless the

@@ -243,9 +243,16 @@ def classify_move(ctx: MoveContext, cfg: ClassificationConfig, in_book: bool, tr
         keeps_mate = played_ev["type"] == "mate" and subjective(played_ev, color) > 0
         alt_mates = alt["eval"]["type"] == "mate" and subjective(alt["eval"], color) > 0
         gap = played_win - alt_win
+        # When both moves are already winning, win% squeezes even "wins the queen vs
+        # wins nothing" into a few percent, so a large centipawn gap also counts.
+        both_cp = played_ev["type"] == "cp" and alt["eval"]["type"] == "cp"
+        cp_gap = subjective(played_ev, color) - subjective(alt["eval"], color) if both_cp else None
         great_checks = {
-            f"gap to alternative >= {cfg.great_gap}% (is {gap:.1f}), or only move keeping a forced mate":
-                gap >= cfg.great_gap or (keeps_mate and not alt_mates),
+            f"gap to alternative >= {cfg.great_gap}% (is {gap:.1f}), or >= {cfg.great_cp_gap} centipawns"
+            f" (is {cp_gap if cp_gap is not None else 'n/a'}), or only move keeping a forced mate":
+                gap >= cfg.great_gap
+                or (cp_gap is not None and cp_gap >= cfg.great_cp_gap)
+                or (keeps_mate and not alt_mates),
             "not a recapture": not _is_recapture(ctx),
             "not an easy capture": not _is_easy_capture(board, move),
             "not escaping a cheaper attacker": not _escapes_cheaper_attacker(board, move),

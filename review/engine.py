@@ -11,10 +11,11 @@ from typing import Callable
 import chess
 import chess.engine
 
+import config
 from config import EngineConfig
 
-# Checked after STOCKFISH_PATH and PATH. Debian/Ubuntu install to /usr/games,
-# which is often not on PATH.
+# Checked after STOCKFISH_PATH (environment, then config.py) and PATH.
+# Debian/Ubuntu install to /usr/games, which is often not on PATH.
 _FALLBACK_LOCATIONS = [
     "/usr/games/stockfish",
     "/usr/local/bin/stockfish",
@@ -23,24 +24,36 @@ _FALLBACK_LOCATIONS = [
 
 INSTALL_HINT = """Stockfish was not found.
 
-Install it and make sure the `stockfish` binary is on your PATH, or point
-STOCKFISH_PATH at it:
+Install it and either put the `stockfish` program on your PATH or set
+STOCKFISH_PATH at the top of config.py to the full path of the program file:
   Ubuntu/Debian: sudo apt install stockfish
   macOS:         brew install stockfish
-  Windows:       download from https://stockfishchess.org/download/ and set
-                 STOCKFISH_PATH=C:\\path\\to\\stockfish.exe"""
+  Windows:       download from https://stockfishchess.org/download/, unzip it, and set
+                 STOCKFISH_PATH = r"C:\\path\\to\\stockfish.exe" in config.py"""
 
 
 class StockfishNotFound(RuntimeError):
     pass
 
 
+def _check_explicit_path(path: str, source: str) -> str:
+    path = os.path.expanduser(path.strip().strip('"'))
+    if os.path.isdir(path):
+        raise StockfishNotFound(
+            f"{source} is set to {path!r}, which is a folder. "
+            "Point it at the Stockfish program file inside it (e.g. stockfish.exe)."
+        )
+    if os.path.isfile(path) and os.access(path, os.X_OK):
+        return path
+    raise StockfishNotFound(f"{source} is set to {path!r}, but that is not an executable file.")
+
+
 def find_stockfish() -> str:
     env_path = os.environ.get("STOCKFISH_PATH")
     if env_path:
-        if os.path.isfile(env_path) and os.access(env_path, os.X_OK):
-            return env_path
-        raise StockfishNotFound(f"STOCKFISH_PATH is set to {env_path!r}, but that is not an executable file.")
+        return _check_explicit_path(env_path, "The STOCKFISH_PATH environment variable")
+    if config.STOCKFISH_PATH:
+        return _check_explicit_path(config.STOCKFISH_PATH, "STOCKFISH_PATH in config.py")
 
     found = shutil.which("stockfish")
     if found:

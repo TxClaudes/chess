@@ -7,6 +7,13 @@ Win percentages are on a 0-100 scale throughout.
 from dataclasses import dataclass, field
 import os
 
+# Full path to the Stockfish program file (not its folder). Leave empty to look on
+# your PATH and in the usual install locations. The STOCKFISH_PATH environment
+# variable, if set, takes priority over this. Examples:
+#   STOCKFISH_PATH = r"C:\Tools\stockfish\stockfish-windows-x86-64-avx2.exe"
+#   STOCKFISH_PATH = "/home/me/stockfish/stockfish"
+STOCKFISH_PATH = ""
+
 
 @dataclass
 class EngineConfig:

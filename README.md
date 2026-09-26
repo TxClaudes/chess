@@ -22,9 +22,18 @@ accuracy, estimated game rating, phase grades and a Retry mode for your mistakes
    | macOS | `brew install stockfish` |
    | Windows | download from <https://stockfishchess.org/download/> |
 
-   The app looks for Stockfish in this order: the `STOCKFISH_PATH` environment variable,
-   `stockfish` on your `PATH`, then `/usr/games`, `/usr/local/bin` and `/opt/homebrew/bin`.
-   If none is found you get an error with these instructions.
+   If Stockfish isn't on your `PATH` (common on Windows), set its location at the top of
+   `config.py`. Use the full path to the program file, not the folder:
+
+   ```python
+   STOCKFISH_PATH = r"C:\Tools\stockfish\stockfish-windows-x86-64-avx2.exe"
+   ```
+
+   The app looks for Stockfish in this order: the `STOCKFISH_PATH` environment variable
+   (handy for a one-off override), `STOCKFISH_PATH` in `config.py`, `stockfish` on your
+   `PATH`, then `/usr/games`, `/usr/local/bin` and `/opt/homebrew/bin`. If none is found
+   you get an error explaining what to do. On startup the server prints which Stockfish
+   it is using.
 
 ## Running
 

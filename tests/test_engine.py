@@ -15,15 +15,51 @@ needs_stockfish = pytest.mark.skipif(not HAVE_STOCKFISH, reason="Stockfish not i
 
 def test_missing_stockfish_gives_clear_error(monkeypatch):
     monkeypatch.delenv("STOCKFISH_PATH", raising=False)
+    monkeypatch.setattr(engine_mod.config, "STOCKFISH_PATH", "")
     monkeypatch.setattr(engine_mod.shutil, "which", lambda name: None)
     monkeypatch.setattr(engine_mod, "_FALLBACK_LOCATIONS", [])
-    with pytest.raises(engine_mod.StockfishNotFound, match="apt install stockfish"):
+    with pytest.raises(engine_mod.StockfishNotFound, match="config.py"):
         engine_mod.find_stockfish()
 
 
 def test_bad_stockfish_path(monkeypatch, tmp_path):
     monkeypatch.setenv("STOCKFISH_PATH", str(tmp_path / "nope"))
     with pytest.raises(engine_mod.StockfishNotFound, match="STOCKFISH_PATH"):
+        engine_mod.find_stockfish()
+
+
+def _fake_engine(tmp_path):
+    exe = tmp_path / "stockfish"
+    exe.write_text("#!/bin/sh\n")
+    exe.chmod(0o755)
+    return str(exe)
+
+
+def test_config_path_is_used(monkeypatch, tmp_path):
+    exe = _fake_engine(tmp_path)
+    monkeypatch.delenv("STOCKFISH_PATH", raising=False)
+    monkeypatch.setattr(engine_mod.config, "STOCKFISH_PATH", exe)
+    assert engine_mod.find_stockfish() == exe
+
+
+def test_env_var_overrides_config(monkeypatch, tmp_path):
+    exe = _fake_engine(tmp_path)
+    monkeypatch.setattr(engine_mod.config, "STOCKFISH_PATH", "/somewhere/else")
+    monkeypatch.setenv("STOCKFISH_PATH", exe)
+    assert engine_mod.find_stockfish() == exe
+
+
+def test_config_path_pointing_at_folder(monkeypatch, tmp_path):
+    monkeypatch.delenv("STOCKFISH_PATH", raising=False)
+    monkeypatch.setattr(engine_mod.config, "STOCKFISH_PATH", str(tmp_path))
+    with pytest.raises(engine_mod.StockfishNotFound, match="folder"):
+        engine_mod.find_stockfish()
+
+
+def test_bad_config_path(monkeypatch, tmp_path):
+    monkeypatch.delenv("STOCKFISH_PATH", raising=False)
+    monkeypatch.setattr(engine_mod.config, "STOCKFISH_PATH", str(tmp_path / "nope.exe"))
+    with pytest.raises(engine_mod.StockfishNotFound, match="config.py"):
         engine_mod.find_stockfish()
 
 

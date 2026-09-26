@@ -1,0 +1,11 @@
+[Event "?"]
+[Site "?"]
+[Date "????.??.??"]
+[Round "?"]
+[White "Random A"]
+[Black "Random B"]
+[Result "1-0"]
+[WhiteElo "1200"]
+[BlackElo "1250"]
+
+1. e4 Nf6 2. g3 d5 3. Qf3 Nfd7 4. exd5 e5 5. dxe6 fxe6 6. Qb3 Nc5 7. Qe3 Nb3 8. Qe2 Kd7 9. axb3 Bc5 10. Nf3 Ke8 11. Bg2 g5 12. Ra4 Bd7 13. Re4 Kf7 14. d4 Be7 15. Ne5+ Kg8 16. O-O Nc6 17. Nxd7 Qb8 18. Nxb8 b6 19. Nxc6 Re8 20. Rf4 Bd8 21. Qh5 e5 22. Qf7# 1-0

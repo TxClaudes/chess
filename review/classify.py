@@ -169,7 +169,9 @@ def _escapes_cheaper_attacker(board: chess.Board, move: chess.Move) -> bool:
     )
 
 
-def classify_move(ctx: MoveContext, cfg: ClassificationConfig, in_book: bool) -> dict:
+def classify_move(ctx: MoveContext, cfg: ClassificationConfig, in_book: bool, trace: dict | None = None) -> dict:
+    """Classify one move. If `trace` is a dict, the Great/Brilliant checks are recorded in it."""
+    trace = {} if trace is None else trace
     board, move = ctx.board, ctx.move
     color = "white" if board.turn == chess.WHITE else "black"
     white_to_move = board.turn == chess.WHITE
@@ -208,19 +210,25 @@ def classify_move(ctx: MoveContext, cfg: ClassificationConfig, in_book: bool) ->
     # Great and Brilliant: the best (or nearly best) move, in a position that was not
     # already won anyway, and not a reflexive move out of check or a queen promotion.
     alt = next((l for l in lines if l["uci"] != played_uci), None)
-    candidate = (
-        base in (BEST, EXCELLENT)
-        and drop <= cfg.special_max_drop
-        and alt is not None
-        and not board.is_check()
-        and move.promotion != chess.QUEEN
-        and win_after >= cfg.special_min_win_after
-    )
+    trace.update({
+        "engine top move": best["san"] if best else None,
+        "base class": base,
+        f"loses at most {cfg.special_max_drop}%": drop <= cfg.special_max_drop,
+        "has an alternative line": alt is not None,
+        "not escaping check": not board.is_check(),
+        "not a queen promotion": move.promotion != chess.QUEEN,
+        f"win after >= {cfg.special_min_win_after}%": win_after >= cfg.special_min_win_after,
+    })
+    candidate = base in (BEST, EXCELLENT) and all(v for k, v in trace.items() if isinstance(v, bool))
     if candidate:
         alt_win = _line_win(alt, white_to_move, color, cfg)
         played_line = next((l for l in lines if l["uci"] == played_uci), None)
         played_win = _line_win(played_line, white_to_move, color, cfg) if played_line else win_after
         candidate = alt_win < cfg.already_winning
+        trace.update({
+            "alternative": f"{alt['san']} ({alt_win:.1f}%)",
+            f"alternative < {cfg.already_winning}% (not already winning)": candidate,
+        })
 
     if candidate:
         reply_pv = ctx.after["lines"][0]["pv"] if ctx.after["lines"] else []
@@ -229,14 +237,24 @@ def classify_move(ctx: MoveContext, cfg: ClassificationConfig, in_book: bool) ->
             leaves_piece_en_prise(board, move),
         )
         result["sacrifice"] = sacrifice
+        # Keeping a forced mate when the alternative only keeps an advantage is critical
+        # even though win% puts "+6" and "mate" only ~10% apart.
+        played_ev = played_line["eval"] if played_line else ctx.after["eval"]
+        keeps_mate = played_ev["type"] == "mate" and subjective(played_ev, color) > 0
+        alt_mates = alt["eval"]["type"] == "mate" and subjective(alt["eval"], color) > 0
+        gap = played_win - alt_win
+        great_checks = {
+            f"gap to alternative >= {cfg.great_gap}% (is {gap:.1f}), or only move keeping a forced mate":
+                gap >= cfg.great_gap or (keeps_mate and not alt_mates),
+            "not a recapture": not _is_recapture(ctx),
+            "not an easy capture": not _is_easy_capture(board, move),
+            "not escaping a cheaper attacker": not _escapes_cheaper_attacker(board, move),
+        }
+        trace[f"sacrifice >= {cfg.brilliant_min_sacrifice} (is {sacrifice})"] = sacrifice >= cfg.brilliant_min_sacrifice
+        trace.update(great_checks)
         if sacrifice >= cfg.brilliant_min_sacrifice:
             classification = BRILLIANT
-        elif (
-            played_win - alt_win >= cfg.great_gap
-            and not _is_recapture(ctx)
-            and not _is_easy_capture(board, move)
-            and not _escapes_cheaper_attacker(board, move)
-        ):
+        elif all(great_checks.values()):
             classification = GREAT
 
     # Miss: failed to punish the opponent's mistake, ending up roughly where

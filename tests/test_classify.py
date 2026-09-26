@@ -187,3 +187,12 @@ def test_making_a_long_mate_easy_is_a_mistake():
 
 def test_accuracy_decay_is_configurable():
     assert move_accuracy(10, 0.08) < move_accuracy(10, 0.0435)
+
+
+def test_only_move_keeping_a_forced_mate_is_great():
+    # Mate vs +7.00 is only ~7% apart in win%, below the 10% gap, but it is the only mate.
+    res = run(START, "g1f3", [line("g1f3", mate(5)), line("b1c3", cp(700))], mate(4))
+    assert res["classification"] == C.GREAT
+    # If the alternative also mates, nothing special.
+    res = run(START, "g1f3", [line("g1f3", mate(5)), line("b1c3", mate(6))], mate(4))
+    assert res["classification"] == C.BEST

@@ -79,7 +79,7 @@ expected-points table:
 | Book | still in the opening book (lichess `chess-openings`, from move 1 without leaving it) |
 | Forced | the only legal move |
 | Miss | an Inaccuracy/Mistake/Blunder right after the opponent's mistake (≥ 10%) that hands back the advantage, ending roughly where things stood before that mistake. Ending up worse than that stays a Mistake/Blunder. |
-| Great | best or near-best (loses ≤ 2%), and every other move is at least 10% worse. Not for recaptures, easy captures (an undefended piece, or a piece worth more than the capturer), moving a piece away from a cheaper attacker, moves out of check, or when the second-best move is already ≥ 97% winning. |
+| Great | best or near-best (loses ≤ 2%), and every other move is at least 10% worse (or it is the only move that keeps a forced mate). Not for recaptures, easy captures (an undefended piece, or a piece worth more than the capturer), moving a piece away from a cheaper attacker, moves out of check, or when the second-best move is already ≥ 97% winning. |
 | Brilliant | best or near-best, gives up material (a piece left en prise, or ≥ 2 pawns down once the engine's line settles), the mover is not worse afterwards, and the position was not already won anyway (second-best < 97%). Pawn-only sacrifices don't count. |
 
 Mates have their own rules. For example, allowing a mate in 1 or 2 is a blunder, unless the
@@ -89,7 +89,8 @@ Every threshold lives in `config.py` (`ClassificationConfig`).
 
 **Accuracy** uses lichess's method with a steeper curve. Each move gets
 `103.17·e^(-decay·win% lost) − 3.17` (plus lichess's +1 bonus). lichess uses decay 0.0435;
-chess.com is harsher, and the default here is 0.08 (`accuracy_decay` in `config.py`). The game
+chess.com is harsher, and the default here is 0.055 (`accuracy_decay` in `config.py`),
+fitted with `tools/calibrate.py`. The game
 score is the average of a volatility-weighted mean and a harmonic mean of the per-move values.
 
 **Game rating** is a rough single-game estimate, `3100·e^(-0.01·ACPL)`, pulled toward the
@@ -115,6 +116,16 @@ and from open-source reimplementations. Expect differences, mainly:
   as normal moves here.
 - Results also depend on your Stockfish version and depth. Depth 18 matched chess.com better
   than depth 22 in our comparison.
+
+### Why did a move get this label?
+
+```
+python tools/explain_move.py game.pgn 24            # White's 24th move
+python tools/explain_move.py game.pgn 22 --black    # Black's 22nd move
+```
+
+This prints the engine's lines, the win% before and after, and every Great/Brilliant check
+with yes/no, which makes it easy to see which rule or number made the difference.
 
 ### Tuning accuracy to your own games
 
@@ -173,6 +184,7 @@ review/classify.py     move classification
 review/summary.py      accuracy, game rating, phases, counts
 review/analyze.py      the pipeline and the command-line entry point
 tools/calibrate.py     fit the accuracy curve to your chess.com-reviewed games
+tools/explain_move.py  show why a move got its label (engine lines, win%, every check)
 static/                the web UI (index.html, app.js, style.css)
 static/vendor/         jQuery 3.7.1, chessboard.js 1.0.0 (+ piece images), Chart.js 4.4.1
 data/openings/         lichess chess-openings TSVs

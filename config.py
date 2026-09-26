@@ -35,9 +35,9 @@ class ClassificationConfig:
     win_k: float = 0.00368208
 
     # Steepness of the per-move accuracy curve. lichess uses 0.0435; chess.com's
-    # accuracy is harsher. 0.08 came from comparing one reviewed game. Refit it on
-    # your own games with tools/calibrate.py.
-    accuracy_decay: float = 0.08
+    # accuracy is harsher. 0.055 is the fit from tools/calibrate.py on DerTeXx's
+    # reviewed games (Stockfish 19, depth 18). Refit it with that script.
+    accuracy_decay: float = 0.055
 
     # Maximum win% drop for each class. Anything above `mistake` is a blunder.
     # Bands follow chess.com's published expected-points table.

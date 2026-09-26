@@ -44,6 +44,17 @@ class ClassificationConfig:
     # accuracy is harsher. 0.055 is the fit from tools/calibrate.py on DerTeXx's
     # reviewed games (Stockfish 19, depth 18). Refit it with that script.
     accuracy_decay: float = 0.055
+    # Win% slope used for accuracy only (None = win_k). A flatter slope makes losses in
+    # already-decided positions count more.
+    accuracy_win_k: float | None = None
+    # How per-move accuracies are averaged into the game score. None = lichess's blend of
+    # a volatility-weighted mean and a harmonic mean. A number p = volatility-weighted
+    # power mean (1 = plain weighted mean, -1 = harmonic; lower punishes bad moves more),
+    # with each move counted as at least `accuracy_floor`, plus `accuracy_offset`.
+    # tools/calibrate.py fits all of these to your chess.com-reviewed games.
+    accuracy_power: float | None = None
+    accuracy_floor: float = 0.0
+    accuracy_offset: float = 0.0
 
     # Maximum win% drop for each class. Anything above `mistake` is a blunder.
     # Bands follow chess.com's published expected-points table.

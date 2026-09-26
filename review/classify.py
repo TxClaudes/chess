@@ -133,6 +133,17 @@ def _line_win(line: dict, white_to_move: bool, color: str, cfg: ClassificationCo
     return pov(white_win_pct(line["eval"], white_to_move, cfg.win_k), color)
 
 
+def _accuracy_drop(ctx: MoveContext, cfg: ClassificationConfig, drop: float) -> float:
+    """Win% lost by the move on the accuracy curve (which may be flatter than win_k's)."""
+    if cfg.accuracy_win_k is None:
+        return drop
+    color = "white" if ctx.board.turn == chess.WHITE else "black"
+    white_to_move = ctx.board.turn == chess.WHITE
+    before = pov(white_win_pct(ctx.before["eval"], white_to_move, cfg.accuracy_win_k), color)
+    after = pov(white_win_pct(ctx.after["eval"], not white_to_move, cfg.accuracy_win_k), color)
+    return max(0.0, before - after)
+
+
 def _is_recapture(ctx: MoveContext) -> bool:
     if not ctx.prev_uci:
         return False
@@ -193,7 +204,7 @@ def classify_move(ctx: MoveContext, cfg: ClassificationConfig, in_book: bool, tr
         "win_before": round(win_before, 2),
         "win_after": round(win_after, 2),
         "win_drop": round(drop, 2),
-        "accuracy": round(move_accuracy(drop, cfg.accuracy_decay), 1),
+        "accuracy": round(move_accuracy(_accuracy_drop(ctx, cfg, drop), cfg.accuracy_decay), 1),
         "sacrifice": 0,
     }
 

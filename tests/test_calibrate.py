@@ -29,6 +29,30 @@ def test_fit_runs_on_canned_games(monkeypatch, tmp_path, capsys):
     monkeypatch.setattr("sys.argv", ["calibrate.py", "someone", "--games", "5", "--depth", "8"])
     assert calibrate.main() == 0
     out = capsys.readouterr().out
-    assert "1 games, depth 8" in out
-    assert "best fit" in out
+    assert "1 games (1 to fit, 0 held out), depth 8" in out
+    assert "current config.py" in out
     assert len(list(tmp_path.glob("*.json"))) == 1
+
+
+def test_fit_recovers_known_settings():
+    """Fake games whose 'chess.com' accuracy comes from known settings: fitting should
+    find settings that reproduce them far better than the defaults do."""
+    import random
+    rng = random.Random(1)
+    target = {"accuracy_decay": 0.08, "accuracy_win_k": None, "accuracy_power": -1.5,
+              "accuracy_floor": 20.0, "accuracy_offset": -3.0}
+    games = []
+    for n in range(24):
+        wins, w = [50.0], 50.0
+        for i in range(60):
+            w = min(99.0, max(1.0, w + rng.gauss(0, 6)))
+            wins.append(round(w, 2))
+        entry = {"url": f"https://x/{n}", "chesscom": {}, "white_wins": wins,
+                 "moves": [{"color": "white" if i % 2 == 0 else "black"} for i in range(60)]}
+        g = calibrate.Game(entry)
+        g.chesscom = g.accuracy(target)
+        games.append(g)
+    current = {k: getattr(calibrate.Config().classify, k) for k in calibrate.GRIDS}
+    fitted = calibrate.fit_multi(games[:18], current, list(calibrate.GRIDS))
+    assert calibrate.mae(games[18:], fitted) < 0.5
+    assert calibrate.mae(games[18:], current) > 2 * calibrate.mae(games[18:], fitted)

@@ -137,16 +137,23 @@ with yes/no, which makes it easy to see which rule or number made the difference
 ### Tuning accuracy to your own games
 
 chess.com's public API reports its accuracy for every game you've opened in Game Review.
-`tools/calibrate.py` downloads those games, analyses them, and finds the `accuracy_decay`
-that matches chess.com best:
+`tools/calibrate.py` downloads those games, analyses them, and fits the accuracy settings in
+`config.py` to match chess.com:
 
 ```
-python tools/calibrate.py YourUsername --games 40 --depth 18
+python tools/calibrate.py YourUsername --games 100 --depth 18
 ```
 
-It prints a per-game comparison and the value to put in `config.py`. Analyses are cached in
-`.calibration/`, so re-running is quick. Run it on your own computer, since chess.com blocks
-requests from cloud servers.
+It fits the curve steepness (`accuracy_decay`), how the per-move scores are averaged into the
+game score (`accuracy_power`, `accuracy_floor`, `accuracy_offset`), and optionally a flatter
+win% curve for accuracy (`accuracy_win_k`). Every 4th game is held out: the settings are
+fitted on the others and judged on those, so only changes that also help unseen games are
+recommended. The script prints the error of each option, a per-game table, and the lines to
+paste into `config.py`.
+
+Analyses are cached in `.calibration/`, so re-running (for example with more games) only
+analyses new games; changing these settings never needs re-analysis. Run it on your own
+computer, since chess.com blocks requests from cloud servers.
 
 ## Output format
 

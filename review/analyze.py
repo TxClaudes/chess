@@ -93,7 +93,7 @@ def analyze_pgn(
         "settings": {"depth": config.engine.depth, "nodes": config.engine.nodes},
         "positions": position_dicts,
         "moves": moves,
-        "summary": summarize(moves, white_wins, game.headers),
+        "summary": summarize(moves, white_wins, game.headers, config.classify),
     }
 
 

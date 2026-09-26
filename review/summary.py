@@ -5,6 +5,8 @@ import statistics
 
 import chess
 
+from config import ClassificationConfig
+
 from review.classify import (ALL_CLASSES, BEST, BLUNDER, EXCELLENT, GOOD, INACCURACY, MISTAKE)
 
 COLORS = ("white", "black")
@@ -19,31 +21,41 @@ def _harmonic_mean(values: list[float]) -> float:
     return len(values) / sum(1.0 / v for v in values) if values else 0.0
 
 
-def game_accuracy(white_wins: list[float], moves: list[dict]) -> dict[str, float | None]:
-    """lichess game accuracy: mean of a volatility-weighted mean and a harmonic mean.
-
-    `white_wins` is White's win% for every position (len = moves + 1). Weights are the
-    standard deviation of win% in a sliding window, so moves in sharp phases count more.
-    """
-    n = len(moves)
+def volatility_weights(white_wins: list[float], n_moves: int) -> list[float]:
+    """lichess move weights: the standard deviation of White's win% in a sliding window,
+    so moves in sharp phases count more. `white_wins` has one entry per position."""
     window = max(2, min(8, math.ceil(len(white_wins) / 10)))
     windows = [white_wins[:window]] * max(0, window - 2)
     windows += [white_wins[i:i + window] for i in range(0, max(1, len(white_wins) - window + 1))]
-    windows = windows[:n]
-    while len(windows) < n:
+    windows = windows[:n_moves]
+    while len(windows) < n_moves:
         windows.append(white_wins[-window:])
-    weights = [min(12.0, max(0.5, statistics.pstdev(w) if len(w) > 1 else 0.0)) for w in windows]
+    return [min(12.0, max(0.5, statistics.pstdev(w) if len(w) > 1 else 0.0)) for w in windows]
 
+
+def aggregate_accuracy(accs: list[float], weights: list[float], cfg: ClassificationConfig | None = None) -> float:
+    """One player's game accuracy from their per-move accuracies (see config.py)."""
+    if cfg is None or cfg.accuracy_power is None:
+        weighted = _weighted_mean(accs, weights)
+        harmonic = _harmonic_mean([max(a, 10.0) for a in accs])
+        return round((weighted + harmonic) / 2, 1)
+    p = cfg.accuracy_power
+    vals = [max(cfg.accuracy_floor, a, 0.1) for a in accs]
+    total = sum(weights)
+    if abs(p) < 1e-9:  # geometric mean
+        mean = math.exp(sum(w * math.log(v) for v, w in zip(vals, weights)) / total)
+    else:
+        mean = (sum(w * v ** p for v, w in zip(vals, weights)) / total) ** (1 / p)
+    return round(min(100.0, max(0.0, mean + cfg.accuracy_offset)), 1)
+
+
+def game_accuracy(white_wins: list[float], moves: list[dict], cfg: ClassificationConfig | None = None) -> dict[str, float | None]:
+    """Game accuracy per player: lichess's method by default, or the fitted power mean."""
+    weights = volatility_weights(white_wins, len(moves))
     out: dict[str, float | None] = {}
     for color in COLORS:
         idx = [i for i, m in enumerate(moves) if m["color"] == color]
-        if not idx:
-            out[color] = None
-            continue
-        accs = [moves[i]["accuracy"] for i in idx]
-        weighted = _weighted_mean(accs, [weights[i] for i in idx])
-        harmonic = _harmonic_mean([max(a, 10.0) for a in accs])
-        out[color] = round((weighted + harmonic) / 2, 1)
+        out[color] = aggregate_accuracy([moves[i]["accuracy"] for i in idx], [weights[i] for i in idx], cfg) if idx else None
     return out
 
 
@@ -159,7 +171,8 @@ def classification_counts(moves: list[dict]) -> dict:
     return counts
 
 
-def summarize(moves: list[dict], white_wins: list[float], headers: dict[str, str]) -> dict:
+def summarize(moves: list[dict], white_wins: list[float], headers: dict[str, str],
+              cfg: ClassificationConfig | None = None) -> dict:
     phases = move_phases(moves)
     for m, p in zip(moves, phases):
         m["phase"] = p
@@ -168,7 +181,7 @@ def summarize(moves: list[dict], white_wins: list[float], headers: dict[str, str
         if "opening" in m:
             opening = m["opening"]
     return {
-        "accuracy": game_accuracy(white_wins, moves),
+        "accuracy": game_accuracy(white_wins, moves, cfg),
         "estimated_rating": estimated_ratings(moves, headers),
         "phases": phase_grades(moves, phases),
         "counts": classification_counts(moves),

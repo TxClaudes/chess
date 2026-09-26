@@ -205,3 +205,17 @@ def test_only_move_winning_the_queen_is_great_even_when_already_winning():
     fen = "r4rk1/p5pp/1p1P1pq1/2p1RN2/8/2Q5/PPPR2P1/2K5 w - - 0 24"
     res = run(fen, "f5e7", [line("f5e7", cp(1292)), line("c3h3", cp(875))], cp(1618))
     assert res["classification"] == C.GREAT
+
+
+def test_power_mean_aggregation():
+    from dataclasses import replace
+    from review.summary import aggregate_accuracy
+    accs, weights = [100.0, 50.0, 0.0], [1.0, 1.0, 2.0]
+    # Default: lichess blend (unchanged behaviour).
+    assert aggregate_accuracy(accs, weights) == aggregate_accuracy(accs, weights, CFG)
+    # p = 1 is a weighted mean; the floor lifts the 0 to 20; the offset shifts the result.
+    cfg = replace(CFG, accuracy_power=1.0, accuracy_floor=20.0, accuracy_offset=-2.0)
+    assert aggregate_accuracy(accs, weights, cfg) == round((100 + 50 + 2 * 20) / 4 - 2, 1)
+    # Lower p punishes the bad moves more.
+    harsh = replace(CFG, accuracy_power=-2.0, accuracy_floor=20.0)
+    assert aggregate_accuracy(accs, weights, harsh) < aggregate_accuracy(accs, weights, replace(harsh, accuracy_power=1.0))

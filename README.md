@@ -79,15 +79,18 @@ expected-points table:
 | Book | still in the opening book (lichess `chess-openings`, from move 1 without leaving it) |
 | Forced | the only legal move |
 | Miss | an Inaccuracy/Mistake/Blunder right after the opponent's mistake (≥ 10%) that hands back the advantage, ending roughly where things stood before that mistake. Ending up worse than that stays a Mistake/Blunder. |
-| Great | best or near-best (loses ≤ 2%), and every other move is at least 10% worse. Not for recaptures, taking an undefended piece, moves out of check, or when the second-best move is already ≥ 97% winning. |
+| Great | best or near-best (loses ≤ 2%), and every other move is at least 10% worse. Not for recaptures, easy captures (an undefended piece, or a piece worth more than the capturer), moving a piece away from a cheaper attacker, moves out of check, or when the second-best move is already ≥ 97% winning. |
 | Brilliant | best or near-best, gives up material (a piece left en prise, or ≥ 2 pawns down once the engine's line settles), the mover is not worse afterwards, and the position was not already won anyway (second-best < 97%). Pawn-only sacrifices don't count. |
 
 Mates have their own rules. For example, allowing a mate in 1 or 2 is a blunder, unless the
-position was already lost. Every threshold lives in `config.py` (`ClassificationConfig`).
+position was already hopeless (worse than −6.00). A defender who turns a long forced mate into
+a mate in 3 or fewer gets a Mistake, because long mates are often not found at club level.
+Every threshold lives in `config.py` (`ClassificationConfig`).
 
-**Accuracy** uses lichess's formula. Each move gets `103.17·e^(-0.0435·win% lost) − 3.17`
-(plus lichess's +1 bonus). The game score is the average of a volatility-weighted mean and a
-harmonic mean of those per-move values.
+**Accuracy** uses lichess's method with a steeper curve. Each move gets
+`103.17·e^(-decay·win% lost) − 3.17` (plus lichess's +1 bonus). lichess uses decay 0.0435;
+chess.com is harsher, and the default here is 0.08 (`accuracy_decay` in `config.py`). The game
+score is the average of a volatility-weighted mean and a harmonic mean of the per-move values.
 
 **Game rating** is a rough single-game estimate, `3100·e^(-0.01·ACPL)`, pulled toward the
 players' PGN Elo when present. One game is a small sample, so treat it as a curiosity.
@@ -106,7 +109,26 @@ and from open-source reimplementations. Expect differences, mainly:
   Brilliant/Great for lower-rated players. This tool uses one curve for everyone.
 - Brilliant and Great depend on small eval differences, so they can change with engine
   depth or version. That is also true on chess.com.
-- chess.com's accuracy (CAPS2) is proprietary. lichess-style accuracy usually reads somewhat lower.
+- chess.com's accuracy (CAPS2) is proprietary. Plain lichess-style accuracy read clearly
+  higher than chess.com's in our comparison, which is why the curve is steeper here.
+- chess.com's opening book is larger than lichess's list, so a few rarer book moves show up
+  as normal moves here.
+- Results also depend on your Stockfish version and depth. Depth 18 matched chess.com better
+  than depth 22 in our comparison.
+
+### Tuning accuracy to your own games
+
+chess.com's public API reports its accuracy for every game you've opened in Game Review.
+`tools/calibrate.py` downloads those games, analyses them, and finds the `accuracy_decay`
+that matches chess.com best:
+
+```
+python tools/calibrate.py YourUsername --games 40 --depth 18
+```
+
+It prints a per-game comparison and the value to put in `config.py`. Analyses are cached in
+`.calibration/`, so re-running is quick. Run it on your own computer, since chess.com blocks
+requests from cloud servers.
 
 ## Output format
 
@@ -150,6 +172,7 @@ review/openings.py     opening book
 review/classify.py     move classification
 review/summary.py      accuracy, game rating, phases, counts
 review/analyze.py      the pipeline and the command-line entry point
+tools/calibrate.py     fit the accuracy curve to your chess.com-reviewed games
 static/                the web UI (index.html, app.js, style.css)
 static/vendor/         jQuery 3.7.1, chessboard.js 1.0.0 (+ piece images), Chart.js 4.4.1
 data/openings/         lichess chess-openings TSVs

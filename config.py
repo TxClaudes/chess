@@ -34,6 +34,11 @@ class ClassificationConfig:
     # Slope of the logistic win% curve (lichess value).
     win_k: float = 0.00368208
 
+    # Steepness of the per-move accuracy curve. lichess uses 0.0435; chess.com's
+    # accuracy is harsher. 0.08 came from comparing one reviewed game. Refit it on
+    # your own games with tools/calibrate.py.
+    accuracy_decay: float = 0.08
+
     # Maximum win% drop for each class. Anything above `mistake` is a blunder.
     # Bands follow chess.com's published expected-points table.
     excellent: float = 2.0
@@ -50,6 +55,13 @@ class ClassificationConfig:
     # Brilliant: minimum material (pawn units) given up over the engine line.
     brilliant_min_sacrifice: int = 2       # 2 excludes plain pawn sacrifices
     brilliant_pv_plies: int = 8            # how far into the engine line to count material
+
+    # Mates. Allowing a mate from a position already worse than -hopeless_cp is judged
+    # by win% only. A defender who turns a long mate into one of <= easy_mate moves,
+    # shortening it by >= easy_mate_shortened, gets a Mistake.
+    hopeless_cp: int = 600
+    easy_mate: int = 3
+    easy_mate_shortened: int = 3
 
     # Miss: the opponent's previous move lost at least `miss_opponent_drop`, this move
     # lost at least `miss_gave_back`, and the mover ended up about where they were

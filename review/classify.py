@@ -9,7 +9,7 @@ from dataclasses import dataclass
 import chess
 
 from config import ClassificationConfig
-from review.material import leaves_piece_en_prise, line_sacrifice
+from review.material import PIECE_VALUES, leaves_piece_en_prise, line_sacrifice
 from review.openings import is_book, opening_name
 from review.winprob import move_accuracy, pov, subjective, white_win_pct
 
@@ -33,6 +33,10 @@ _SEVERITY = [BEST, EXCELLENT, GOOD, INACCURACY, MISTAKE, BLUNDER]
 
 def _milder(a: str, b: str) -> str:
     return a if _SEVERITY.index(a) <= _SEVERITY.index(b) else b
+
+
+def _harsher(a: str, b: str) -> str:
+    return a if _SEVERITY.index(a) >= _SEVERITY.index(b) else b
 
 
 @dataclass
@@ -86,6 +90,10 @@ def point_loss_class(ev_before: dict, ev_after: dict, color: str, drop: float, c
         shortened = abs(sb) - abs(sa)
         if shortened <= 0:
             return BEST
+        # Turning a long mate (which weaker players often fail to find) into an
+        # easy short one is punished; shortening an already long mate is not.
+        if abs(sa) <= cfg.easy_mate and shortened >= cfg.easy_mate_shortened:
+            return MISTAKE
         return EXCELLENT if shortened <= 2 else GOOD
 
     if before_mate and not after_mate:
@@ -105,15 +113,18 @@ def point_loss_class(ev_before: dict, ev_after: dict, color: str, drop: float, c
     if not before_mate and after_mate:
         if sa > 0:
             return BEST  # found a forced mate
-        # Allowed a forced mate. Take the milder of the mate table and the win% drop,
-        # so a position that was already lost does not produce a blunder.
+        # Allowed a forced mate. In a position that was already hopeless only the
+        # (small) win% drop counts; otherwise take the harsher of the two verdicts.
         if sa >= -2:
             table = BLUNDER
         elif sa >= -5:
             table = MISTAKE
         else:
             table = INACCURACY
-        return _milder(table, drop_band(drop, cfg))
+        band = drop_band(drop, cfg)
+        if sb <= -cfg.hopeless_cp:
+            return band
+        return _harsher(table, band)
 
     return drop_band(drop, cfg)
 
@@ -137,11 +148,25 @@ def _is_recapture(ctx: MoveContext) -> bool:
     return last.is_capture(prev)
 
 
-def _captures_free_piece(board: chess.Board, move: chess.Move) -> bool:
-    """Taking an undefended piece is easy to find, so it cannot be Great."""
+def _is_easy_capture(board: chess.Board, move: chess.Move) -> bool:
+    """Taking an undefended piece, or a piece worth more than the capturer, is easy to find."""
     if not board.is_capture(move) or board.is_en_passant(move):
         return False
+    captured = board.piece_type_at(move.to_square)
+    capturer = board.piece_type_at(move.from_square)
+    if PIECE_VALUES[captured] > PIECE_VALUES[capturer]:
+        return True
     return not board.attackers(not board.turn, move.to_square)
+
+
+def _escapes_cheaper_attacker(board: chess.Board, move: chess.Move) -> bool:
+    """Moving a piece away from an attack by a cheaper piece is an obvious reaction."""
+    piece = board.piece_at(move.from_square)
+    value = PIECE_VALUES[piece.piece_type]
+    return any(
+        PIECE_VALUES[board.piece_type_at(sq)] < value
+        for sq in board.attackers(not board.turn, move.from_square)
+    )
 
 
 def classify_move(ctx: MoveContext, cfg: ClassificationConfig, in_book: bool) -> dict:
@@ -166,7 +191,7 @@ def classify_move(ctx: MoveContext, cfg: ClassificationConfig, in_book: bool) ->
         "win_before": round(win_before, 2),
         "win_after": round(win_after, 2),
         "win_drop": round(drop, 2),
-        "accuracy": round(move_accuracy(drop), 1),
+        "accuracy": round(move_accuracy(drop, cfg.accuracy_decay), 1),
         "sacrifice": 0,
     }
 
@@ -209,7 +234,8 @@ def classify_move(ctx: MoveContext, cfg: ClassificationConfig, in_book: bool) ->
         elif (
             played_win - alt_win >= cfg.great_gap
             and not _is_recapture(ctx)
-            and not _captures_free_piece(board, move)
+            and not _is_easy_capture(board, move)
+            and not _escapes_cheaper_attacker(board, move)
         ):
             classification = GREAT
 

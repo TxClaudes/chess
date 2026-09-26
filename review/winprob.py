@@ -26,7 +26,11 @@ def subjective(ev: dict, color: str) -> int:
     return ev["value"] if color == "white" else -ev["value"]
 
 
-def move_accuracy(win_drop: float) -> float:
-    """lichess per-move accuracy from the win% lost by the move (includes lichess's +1 bonus)."""
-    raw = 103.1668100711649 * math.exp(-0.04354415386753951 * max(0.0, win_drop)) - 3.166924740191411
+LICHESS_ACCURACY_DECAY = 0.04354415386753951
+
+
+def move_accuracy(win_drop: float, decay: float = LICHESS_ACCURACY_DECAY) -> float:
+    """Per-move accuracy from the win% lost by the move: lichess's curve with an
+    adjustable steepness (`decay`), including lichess's +1 bonus."""
+    raw = 103.1668100711649 * math.exp(-decay * max(0.0, win_drop)) - 3.166924740191411
     return min(100.0, max(0.0, raw + 1))

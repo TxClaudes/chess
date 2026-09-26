@@ -157,3 +157,33 @@ def test_blunder_stays_blunder_when_worse_than_before():
     prev = {"win_before": 50.0, "win_drop": 25.0}
     res = run(START, "a2a3", [line("e2e4", cp(400)), line("d2d4", cp(390))], cp(-700), prev=prev, prev_uci="e7e5")
     assert res["classification"] == C.BLUNDER
+
+
+# --- rules added after comparing with a chess.com review -------------------
+
+def test_taking_a_more_valuable_piece_is_not_great():
+    # Knight takes a queen that is defended by a pawn: obvious, so Best not Great.
+    fen = "4k3/8/5p2/6q1/8/5N2/8/4K3 w - - 0 1"
+    res = run(fen, "f3g5", [line("f3g5", cp(900)), line("e1e2", cp(-300))], cp(900))
+    assert res["classification"] == C.BEST
+
+
+def test_moving_away_from_a_cheaper_attacker_is_not_great():
+    # Rook attacked by a knight steps away: the only good move, but an obvious one.
+    fen = "4k3/8/8/8/8/8/5n2/3RK3 w - - 0 1"
+    res = run(fen, "d1d2", [line("d1d2", cp(300)), line("e1e2", cp(-100))], cp(300))
+    assert res["classification"] == C.BEST
+
+
+def test_allowing_a_long_mate_from_a_playable_position_is_harsh():
+    # Not yet hopeless (-5.00): the win% drop (a Mistake) beats the lenient mate table.
+    assert C.point_loss_class(cp(-500), mate(-15), "white", 10.7, CFG) == C.MISTAKE
+
+
+def test_making_a_long_mate_easy_is_a_mistake():
+    assert C.point_loss_class(mate(-14), mate(-3), "white", 0, CFG) == C.MISTAKE
+    assert C.point_loss_class(mate(-14), mate(-12), "white", 0, CFG) == C.EXCELLENT
+
+
+def test_accuracy_decay_is_configurable():
+    assert move_accuracy(10, 0.08) < move_accuracy(10, 0.0435)

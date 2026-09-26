@@ -6,13 +6,19 @@ Win percentages are on a 0-100 scale throughout.
 
 from dataclasses import dataclass, field
 import os
+from pathlib import Path
 
-# Full path to the Stockfish program file (not its folder). Leave empty to look on
-# your PATH and in the usual install locations. The STOCKFISH_PATH environment
-# variable, if set, takes priority over this. Examples:
+# Full path to the Stockfish program file (not its folder). If this file doesn't exist,
+# Stockfish is looked for on your PATH and in the usual install locations instead. The
+# STOCKFISH_PATH environment variable, if set, takes priority over this.
+# Path.home() is your user folder (C:\Users\<name> on Windows, like %USERPROFILE%).
+# Other examples:
 #   STOCKFISH_PATH = r"C:\Tools\stockfish\stockfish-windows-x86-64-avx2.exe"
 #   STOCKFISH_PATH = "/home/me/stockfish/stockfish"
-STOCKFISH_PATH = ""
+STOCKFISH_PATH = str(
+    Path.home() / "Documents" / "Programme" / "stockfish-windows-x86-64-universal"
+    / "stockfish" / "stockfish-windows-x86-64-universal.exe"
+)
 
 
 @dataclass

@@ -52,8 +52,11 @@ def find_stockfish() -> str:
     env_path = os.environ.get("STOCKFISH_PATH")
     if env_path:
         return _check_explicit_path(env_path, "The STOCKFISH_PATH environment variable")
-    if config.STOCKFISH_PATH:
-        return _check_explicit_path(config.STOCKFISH_PATH, "STOCKFISH_PATH in config.py")
+    # The config path is a preferred location: if nothing is there, keep searching,
+    # so the default path doesn't break the app on other computers.
+    config_path = os.path.expanduser(config.STOCKFISH_PATH.strip().strip('"')) if config.STOCKFISH_PATH else ""
+    if config_path and os.path.exists(config_path):
+        return _check_explicit_path(config_path, "STOCKFISH_PATH in config.py")
 
     found = shutil.which("stockfish")
     if found:
@@ -63,6 +66,8 @@ def find_stockfish() -> str:
         if os.path.isfile(candidate) and os.access(candidate, os.X_OK):
             return candidate
 
+    if config_path:
+        raise StockfishNotFound(f"{INSTALL_HINT}\n\n(STOCKFISH_PATH in config.py points to {config_path!r}, which does not exist.)")
     raise StockfishNotFound(INSTALL_HINT)
 
 

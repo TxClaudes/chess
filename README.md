@@ -30,10 +30,11 @@ accuracy, estimated game rating, phase grades and a Retry mode for your mistakes
    ```
 
    The app looks for Stockfish in this order: the `STOCKFISH_PATH` environment variable
-   (handy for a one-off override), `STOCKFISH_PATH` in `config.py`, `stockfish` on your
-   `PATH`, then `/usr/games`, `/usr/local/bin` and `/opt/homebrew/bin`. If none is found
-   you get an error explaining what to do. On startup the server prints which Stockfish
-   it is using.
+   (handy for a one-off override), `STOCKFISH_PATH` in `config.py` (by default
+   `Documents\Programme\stockfish-windows-x86-64-universal\stockfish\stockfish-windows-x86-64-universal.exe`
+   in your user folder, skipped if that file doesn't exist), `stockfish` on your `PATH`,
+   then `/usr/games`, `/usr/local/bin` and `/opt/homebrew/bin`. If none is found you get an
+   error explaining what to do. On startup the server prints which Stockfish it is using.
 
 ## Running
 

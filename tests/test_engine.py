@@ -56,10 +56,20 @@ def test_config_path_pointing_at_folder(monkeypatch, tmp_path):
         engine_mod.find_stockfish()
 
 
-def test_bad_config_path(monkeypatch, tmp_path):
+def test_missing_config_path_falls_back_to_search(monkeypatch, tmp_path):
+    exe = _fake_engine(tmp_path)
     monkeypatch.delenv("STOCKFISH_PATH", raising=False)
     monkeypatch.setattr(engine_mod.config, "STOCKFISH_PATH", str(tmp_path / "nope.exe"))
-    with pytest.raises(engine_mod.StockfishNotFound, match="config.py"):
+    monkeypatch.setattr(engine_mod.shutil, "which", lambda name: exe)
+    assert engine_mod.find_stockfish() == exe
+
+
+def test_missing_config_path_named_in_error_when_nothing_found(monkeypatch, tmp_path):
+    monkeypatch.delenv("STOCKFISH_PATH", raising=False)
+    monkeypatch.setattr(engine_mod.config, "STOCKFISH_PATH", str(tmp_path / "nope.exe"))
+    monkeypatch.setattr(engine_mod.shutil, "which", lambda name: None)
+    monkeypatch.setattr(engine_mod, "_FALLBACK_LOCATIONS", [])
+    with pytest.raises(engine_mod.StockfishNotFound, match="nope.exe"):
         engine_mod.find_stockfish()
 
 

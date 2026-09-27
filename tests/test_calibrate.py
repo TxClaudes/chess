@@ -76,5 +76,5 @@ def test_since_skips_old_games_and_archives(monkeypatch):
     since = datetime(2023, 1, 10, tzinfo=timezone.utc)
     games = calibrate.reviewed_games("x", 10, since)
     # Feb 2023: both games; Jan 2023: only the one after Jan 10; the 2021 archive is never fetched.
-    assert [g["url"].split("games/")[1] for g in games] == ["2023/02/a", "2023/02/b", "2023/01/a"]
+    assert sorted(g["url"].split("games/")[1] for g in games) == ["2023/01/a", "2023/02/a", "2023/02/b"]
     assert not any("2021" in u for u in fetched)

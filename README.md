@@ -151,6 +151,10 @@ fitted on the others and judged on those, so only changes that also help unseen 
 recommended. The script prints the error of each option, a per-game table, and the lines to
 paste into `config.py`.
 
+By default only games since 2023 are used (`--since 2023-01-01`): reviews from before
+chess.com's current accuracy system (CAPS2) often show very low numbers such as 7 or 16 that
+come from a different formula and would distort the fit.
+
 Analyses are cached in `.calibration/`, so re-running (for example with more games) only
 analyses new games; changing these settings never needs re-analysis. Run it on your own
 computer, since chess.com blocks requests from cloud servers.

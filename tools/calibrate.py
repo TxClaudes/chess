@@ -13,9 +13,11 @@ Analyses are cached in .calibration/, so re-running only analyses new games.
 
 import argparse
 from dataclasses import replace
+from datetime import datetime, timezone
 import json
 import math
 from pathlib import Path
+import statistics
 import sys
 import time
 import urllib.error
@@ -48,12 +50,18 @@ def fetch_json(url: str) -> dict:
     raise RuntimeError("unreachable")
 
 
-def reviewed_games(user: str, limit: int) -> list[dict]:
-    """Newest first: standard-chess games that have chess.com accuracies."""
+def reviewed_games(user: str, limit: int, since: datetime | None = None) -> list[dict]:
+    """Newest first: standard-chess games with chess.com accuracies, ended after `since`."""
     archives = fetch_json(API.format(user=user.lower()))["archives"]
+    cutoff = since.timestamp() if since else None
     games = []
     for url in reversed(archives):
+        year, month = (int(x) for x in url.rstrip("/").split("/")[-2:])
+        if since and (year, month) < (since.year, since.month):
+            break  # archives are monthly; everything further back is older
         for g in reversed(fetch_json(url)["games"]):
+            if cutoff and g.get("end_time", cutoff) < cutoff:
+                continue
             if g.get("rules") == "chess" and g.get("accuracies") and g.get("pgn"):
                 games.append(g)
                 if len(games) >= limit:
@@ -99,7 +107,7 @@ def analyse_cached(games: list[dict], config: Config) -> list[dict]:
 
 GRIDS = {
     "accuracy_decay": [round(0.02 + 0.0025 * i, 4) for i in range(53)],             # 0.02 .. 0.15
-    "accuracy_win_k": [None] + [round(0.0018 + 0.0001 * i, 4) for i in range(29)],  # .. 0.0046
+    "accuracy_win_k": [None] + [round(0.0010 + 0.0001 * i, 4) for i in range(37)],  # 0.0010 .. 0.0046
     "accuracy_power": [None] + [round(-4 + 0.25 * i, 2) for i in range(23)],        # -4 .. 1.5
     "accuracy_floor": [2.5 * i for i in range(25)],                                   # 0 .. 60
     "accuracy_offset": [round(-12 + 0.5 * i, 1) for i in range(49)],                  # -12 .. 12
@@ -195,6 +203,10 @@ def main() -> int:
     parser.add_argument("username")
     parser.add_argument("--games", type=int, default=40, help="how many reviewed games to use (default 40)")
     parser.add_argument("--depth", type=int, default=None, help="engine depth (default: config.py)")
+    parser.add_argument("--since", default="2023-01-01",
+                        help="only games ended on or after this date, YYYY-MM-DD (default 2023-01-01). Older "
+                             "reviews used chess.com's previous accuracy system (CAPS v1) and don't fit; "
+                             "use --since 2000-01-01 to include everything")
     args = parser.parse_args()
 
     config = Config()
@@ -202,7 +214,8 @@ def main() -> int:
         config.engine.depth = args.depth
 
     print(f"Fetching reviewed games for {args.username}...", file=sys.stderr)
-    games_raw = reviewed_games(args.username, args.games)
+    since = datetime.strptime(args.since, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+    games_raw = reviewed_games(args.username, args.games, since)
     if not games_raw:
         print("No reviewed games found. Only games opened in Game Review have chess.com accuracies.")
         return 1
@@ -228,12 +241,13 @@ def main() -> int:
 
     print(f"\n{len(games)} games ({len(train)} to fit, {len(test)} held out), depth {config.engine.depth}\n")
     rows = [("lichess method", lichess), ("current config.py", current)] + list(candidates.items())
-    print(f"{'':<34} {'fit games':>10} {'held-out':>10} {'bias':>7}")
+    print(f"{'':<34} {'fit games':>10} {'held-out':>10} {'median':>7} {'bias':>7}")
     for name, params in rows:
         e = errors(games, params)
         bias = sum(e) / len(e) if e else 0
-        print(f"{name:<34} {mae(train, params):>9.1f}  {mae(test, params):>9.1f}  {bias:>+6.1f}")
-    print("(average error in accuracy points; bias > 0 means ours reads higher than chess.com)")
+        median = statistics.median(abs(x) for x in e) if e else 0
+        print(f"{name:<34} {mae(train, params):>9.1f}  {mae(test, params):>9.1f}  {median:>6.1f}  {bias:>+6.1f}")
+    print("(average error in accuracy points; median over all games; bias > 0 means ours reads higher)")
 
     best_name, best = min(candidates.items(), key=lambda kv: mae(test, kv[1]))
     print(f"\nPer game, current vs {best_name}:")

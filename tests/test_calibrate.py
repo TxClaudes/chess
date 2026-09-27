@@ -56,3 +56,25 @@ def test_fit_recovers_known_settings():
     fitted = calibrate.fit_multi(games[:18], current, list(calibrate.GRIDS))
     assert calibrate.mae(games[18:], fitted) < 0.5
     assert calibrate.mae(games[18:], current) > 2 * calibrate.mae(games[18:], fitted)
+
+
+def test_since_skips_old_games_and_archives(monkeypatch):
+    from datetime import datetime, timezone
+    fetched = []
+
+    def fake_fetch(url):
+        fetched.append(url)
+        if url.endswith("/archives"):
+            return {"archives": [f"https://api.chess.com/pub/player/x/games/{m}" for m in ("2021/03", "2023/01", "2023/02")]}
+        stamp = datetime(int(url.split("/")[-2]), int(url.split("/")[-1]), 15, tzinfo=timezone.utc).timestamp()
+        return {"games": [
+            {"rules": "chess", "url": url + "/a", "pgn": PGN, "accuracies": {"white": 1, "black": 1}, "end_time": stamp},
+            {"rules": "chess", "url": url + "/b", "pgn": PGN, "accuracies": {"white": 1, "black": 1}, "end_time": stamp - 20 * 86400},
+        ]}
+
+    monkeypatch.setattr(calibrate, "fetch_json", fake_fetch)
+    since = datetime(2023, 1, 10, tzinfo=timezone.utc)
+    games = calibrate.reviewed_games("x", 10, since)
+    # Feb 2023: both games; Jan 2023: only the one after Jan 10; the 2021 archive is never fetched.
+    assert [g["url"].split("games/")[1] for g in games] == ["2023/02/a", "2023/02/b", "2023/01/a"]
+    assert not any("2021" in u for u in fetched)
